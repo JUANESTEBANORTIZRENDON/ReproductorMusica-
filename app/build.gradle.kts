@@ -72,13 +72,16 @@ dependencies {
     implementation(libs.roomRuntime)
     kapt(libs.roomCompiler)
 
-// LIFECYCLE
+// LIFECYCLE & VIEWMODEL
     implementation(libs.lifecycleLivedata)
     implementation(libs.lifecycleViewmodel)
+    implementation(libs.lifecycleViewmodelCompose)
 
-// EXOPLAYER
+// EXOPLAYER & MEDIA SESSION
     implementation(libs.media3Exoplayer)
     implementation(libs.media3Ui)
+    implementation(libs.media3Session)
+    implementation(libs.media3Common)
 
 // COROUTINES
     implementation(libs.coroutinesCore)
@@ -87,8 +90,12 @@ dependencies {
 // NAVIGATION
     implementation(libs.navigationFragment)
     implementation(libs.navigationUi)
+    implementation(libs.navigationCompose)
 
 // MATERIAL 3 (Jetpack Compose UI)
     implementation(libs.androidxComposeMaterial3)
+
+// IMAGE LOADING
+    implementation(libs.coilCompose)
 
 }

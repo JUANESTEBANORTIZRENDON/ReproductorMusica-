@@ -1,203 +1,251 @@
 package com.juan.reproductormusica.presentation.screens
 
-import android.content.Intent
-import android.media.MediaPlayer
-import android.os.Build
 import android.text.format.DateUtils
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.Player
 import com.juan.reproductormusica.R
 import com.juan.reproductormusica.data.Song
-import com.juan.reproductormusica.service.MusicService
+import com.juan.reproductormusica.presentation.components.SearchAndFilterBar
+import com.juan.reproductormusica.presentation.components.SearchResultsInfo
+import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
+import com.juan.reproductormusica.presentation.viewmodel.SortOption
+import com.juan.reproductormusica.utils.AlbumArtUtils
 import kotlinx.coroutines.delay
 import java.io.File
 
 private val MusicFont = FontFamily(Font(R.font.montserrat_medium))
 
 @Composable
-fun SongListScreen(canciones: List<Song>) {
-    val total = canciones.size
-    val agrupadas = canciones.groupBy {
-        File(it.data).parentFile?.name ?: "Desconocida"
-    }.toSortedMap()
-
-    var currentSong by remember { mutableStateOf<Song?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var currentPosition by remember { mutableStateOf(0) }
-    val context = LocalContext.current
-
-    LaunchedEffect(mediaPlayer, isPlaying) {
-        while (isPlaying) {
-            mediaPlayer?.let {
-                currentPosition = it.currentPosition
+fun SongListScreen(
+    canciones: List<Song>, // Lista original (para estadísticas)
+    musicViewModel: MusicViewModel,
+    modifier: Modifier = Modifier
+) {
+    // Estados reactivos desde MusicViewModel (patrón MVVM)
+    val isPlaying by musicViewModel.isPlaying.collectAsState()
+    val currentSong by musicViewModel.currentSong.collectAsState()
+    
+    // Estados de búsqueda y filtrado
+    val searchQuery by musicViewModel.searchQuery.collectAsState()
+    val sortOption by musicViewModel.sortOption.collectAsState()
+    val filteredSongs by musicViewModel.filteredSongs.collectAsState()
+    
+    // Agrupar canciones filtradas por carpeta (solo para mostrar cuando no hay búsqueda activa)
+    val shouldGroupByFolder = searchQuery.isEmpty() && sortOption == SortOption.DEFAULT
+    val agrupadas = if (shouldGroupByFolder) {
+        filteredSongs.groupBy {
+            try {
+                File(it.data).parentFile?.name ?: "Carpeta Desconocida"
+            } catch (e: Exception) {
+                "Carpeta Desconocida"
             }
-            delay(500)
-        }
+        }.toSortedMap()
+    } else {
+        emptyMap()
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
+            .background(Color(0xFF1A0000)) // Fondo rojo muy oscuro
             .padding(16.dp)
     ) {
-        Text(
-            text = "Total: $total canciones",
-            style = TextStyle(
-                fontFamily = MusicFont,
-                color = Color.White,
-                fontSize = 18.sp
-            ),
+        // Barra de búsqueda y filtrado
+        SearchAndFilterBar(
+            searchQuery = searchQuery,
+            sortOption = sortOption,
+            onSearchQueryChange = { musicViewModel.updateSearchQuery(it) },
+            onSortOptionChange = { musicViewModel.updateSortOption(it) },
+            onClearSearch = { musicViewModel.clearSearch() },
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        // Información de resultados
+        SearchResultsInfo(
+            totalSongs = canciones.size,
+            filteredSongs = filteredSongs.size,
+            searchQuery = searchQuery,
+            sortOption = sortOption,
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-            agrupadas.forEach { (carpeta, lista) ->
-                item {
-                    Text(
-                        text = carpeta.uppercase(),
-                        style = TextStyle(
-                            fontFamily = MusicFont,
-                            color = Color(0xFF1E1E1E),
-                            fontSize = 14.sp
-                        ),
-                        modifier = Modifier.padding(vertical = 6.dp)
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp), 
+            modifier = Modifier.weight(1f)
+        ) {
+            if (shouldGroupByFolder && agrupadas.isNotEmpty()) {
+                // Mostrar agrupado por carpetas (comportamiento original)
+                agrupadas.forEach { (carpeta, lista) ->
+                    item {
+                        Text(
+                            text = carpeta.uppercase(),
+                            style = TextStyle(
+                                fontFamily = MusicFont,
+                                color = Color(0xFFFF6B6B), // Rojo claro para contraste
+                                fontSize = 14.sp
+                            ),
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    }
+                    items(lista) { song ->
+                        SongItem(
+                            song = song,
+                            isCurrentSong = currentSong?.id == song.id,
+                            isPlaying = isPlaying && currentSong?.id == song.id,
+                            onClick = {
+                                // Delegar evento al ViewModel (patrón MVVM)
+                                musicViewModel.playSong(song)
+                            }
+                        )
+                    }
+                }
+            } else {
+                // Mostrar lista filtrada/ordenada sin agrupación
+                items(filteredSongs) { song ->
+                    SongItem(
+                        song = song,
+                        isCurrentSong = currentSong?.id == song.id,
+                        isPlaying = isPlaying && currentSong?.id == song.id,
+                        onClick = {
+                            // Delegar evento al ViewModel (patrón MVVM)
+                            musicViewModel.playSong(song)
+                        }
                     )
                 }
-                items(lista) { song ->
-                    SongItem(song, onClick = {
-                        try {
-                            mediaPlayer?.stop()
-                            mediaPlayer?.release()
-                        } catch (_: Exception) {}
-
-                        mediaPlayer = MediaPlayer().apply {
-                            setDataSource(song.data)
-                            prepare()
-                            start()
+            }
+            
+            // Mensaje cuando no hay resultados
+            if (filteredSongs.isEmpty() && canciones.isNotEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "No se encontraron canciones",
+                                style = TextStyle(
+                                    fontFamily = MusicFont,
+                                    color = Color.White,
+                                    fontSize = 18.sp
+                                )
+                            )
+                            Text(
+                                text = "Intenta con otros términos de búsqueda",
+                                style = TextStyle(
+                                    fontFamily = MusicFont,
+                                    color = Color(0xFFBBBBBB),
+                                    fontSize = 14.sp
+                                )
+                            )
                         }
-                        currentSong = song
-                        isPlaying = true
-
-                        val intent = Intent(context, MusicService::class.java).apply {
-                            putExtra("title", song.title)
-                            putExtra("path", song.data)
-                            action = "ACTION_START"
-                        }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            context.startForegroundService(intent)
-                        } else {
-                            context.startService(intent)
-                        }
-                    })
+                    }
                 }
             }
         }
 
-        currentSong?.let { song ->
-            MusicPlayer(
-                song = song,
-                isPlaying = isPlaying,
-                position = currentPosition,
-                duration = mediaPlayer?.duration ?: song.duration.toInt(),
-                onToggle = {
-                    if (isPlaying) mediaPlayer?.pause() else mediaPlayer?.start()
-                    isPlaying = !isPlaying
-
-                    val action = if (isPlaying) "ACTION_PLAY" else "ACTION_PAUSE"
-                    val intent = Intent(context, MusicService::class.java).apply { this.action = action }
-                    context.startService(intent)
-                },
-                onNext = {
-                    val allSongs = canciones
-                    val currentIndex = allSongs.indexOf(song)
-                    if (currentIndex < allSongs.lastIndex) {
-                        val nextSong = allSongs[currentIndex + 1]
-                        mediaPlayer?.stop()
-                        mediaPlayer?.release()
-                        mediaPlayer = MediaPlayer().apply {
-                            setDataSource(nextSong.data)
-                            prepare()
-                            start()
-                        }
-                        currentSong = nextSong
-                        isPlaying = true
-
-                        val intent = Intent(context, MusicService::class.java).apply {
-                            putExtra("title", nextSong.title)
-                            putExtra("path", nextSong.data)
-                            action = "ACTION_START"
-                        }
-                        context.startService(intent)
-                    }
-                },
-                onPrevious = {
-                    val allSongs = canciones
-                    val currentIndex = allSongs.indexOf(song)
-                    if (currentIndex > 0) {
-                        val prevSong = allSongs[currentIndex - 1]
-                        mediaPlayer?.stop()
-                        mediaPlayer?.release()
-                        mediaPlayer = MediaPlayer().apply {
-                            setDataSource(prevSong.data)
-                            prepare()
-                            start()
-                        }
-                        currentSong = prevSong
-                        isPlaying = true
-
-                        val intent = Intent(context, MusicService::class.java).apply {
-                            putExtra("title", prevSong.title)
-                            putExtra("path", prevSong.data)
-                            action = "ACTION_START"
-                        }
-                        context.startService(intent)
-                    }
-                },
-                onSeekTo = { pos ->
-                    mediaPlayer?.seekTo(pos)
-                    currentPosition = pos
-                }
-            )
-        }
+        // El reproductor ahora es manejado por el MiniPlayer persistente en MusicNavigation
     }
 }
 
 @Composable
-fun SongItem(song: Song, onClick: () -> Unit) {
+fun SongItem(
+    song: Song,
+    isCurrentSong: Boolean = false,
+    isPlaying: Boolean = false,
+    onClick: () -> Unit
+) {
+    val backgroundColor = if (isCurrentSong) Color(0xFF4A0E0E) else Color(0xFF2D0808)
+    val borderColor = if (isCurrentSong) Color(0xFFFF6B6B) else Color(0xFF1A0404)
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(2.dp, Color(0xFF3B0909))
+            .border(2.dp, borderColor)
             .padding(1.dp)
-            .background(Color(0xFF5F100D))
+            .background(backgroundColor)
             .padding(8.dp)
             .clickable { onClick() }
     ) {
-        Text(
-            text = "🎵 ${song.title}",
-            style = TextStyle(
-                fontFamily = MusicFont,
-                color = Color.White,
-                fontSize = 16.sp
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Album Art miniatura
+            SongAlbumArt(
+                filePath = song.data,
+                isCurrentSong = isCurrentSong,
+                isPlaying = isPlaying,
+                modifier = Modifier.size(48.dp)
             )
-        )
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            // Información de la canción
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = song.title,
+                    style = TextStyle(
+                        fontFamily = MusicFont,
+                        color = if (isCurrentSong) Color(0xFFFFFFFF) else Color.White,
+                        fontSize = 16.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Text(
+                    text = try {
+                        File(song.data).parentFile?.name ?: "Carpeta Desconocida"
+                    } catch (e: Exception) {
+                        "Carpeta Desconocida"
+                    },
+                    style = TextStyle(
+                        fontFamily = MusicFont,
+                        color = if (isCurrentSong) Color(0xFFCCCCCC) else Color(0xFFBBBBBB),
+                        fontSize = 14.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            
+            if (isCurrentSong) {
+                Text(
+                    text = if (isPlaying) "⏸️" else "▶️",
+                    fontSize = 16.sp
+                )
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -216,71 +264,74 @@ fun SongItem(song: Song, onClick: () -> Unit) {
     }
 }
 
-@Composable
-fun MusicPlayer(
-    song: Song,
-    isPlaying: Boolean,
-    position: Int,
-    duration: Int,
-    onToggle: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onSeekTo: (Int) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF3B0909))
-            .padding(12.dp)
-    ) {
-        Text(
-            text = "📀 ${song.title}",
-            style = TextStyle(
-                fontFamily = MusicFont,
-                color = Color.White,
-                fontSize = 16.sp
-            )
-        )
 
-        Slider(
-            value = position.toFloat(),
-            onValueChange = { newValue -> onSeekTo(newValue.toInt()) },
-            valueRange = 0f..duration.toFloat(),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(top = 8.dp)
-        ) {
-            Text(
-                text = formatDuration(position.toLong()),
-                style = TextStyle(fontFamily = MusicFont, color = Color.LightGray, fontSize = 12.sp)
-            )
-            IconButton(onClick = onPrevious) {
-                Icon(painter = painterResource(R.drawable.ic_previous), contentDescription = "Anterior", tint = Color.White)
-            }
-            IconButton(onClick = onToggle) {
-                Icon(
-                    painter = painterResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
-                    contentDescription = "Play/Pause",
-                    tint = Color.White
-                )
-            }
-            IconButton(onClick = onNext) {
-                Icon(painter = painterResource(R.drawable.ic_next), contentDescription = "Siguiente", tint = Color.White)
-            }
-            Text(
-                text = formatDuration(duration.toLong()),
-                style = TextStyle(fontFamily = MusicFont, color = Color.LightGray, fontSize = 12.sp)
-            )
-        }
-    }
-}
 
 fun formatDuration(durationMs: Long): String {
     return DateUtils.formatElapsedTime(durationMs / 1000)
+}
+
+/**
+ * Componente de Album Art para elementos de la lista de canciones
+ */
+@Composable
+private fun SongAlbumArt(
+    filePath: String,
+    isCurrentSong: Boolean,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val albumArt by AlbumArtUtils.rememberAlbumArt(filePath)
+    
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isCurrentSong) 
+                    Color(0xFF6B1F1F).copy(alpha = 0.6f) // Rojo más claro para canción actual
+                else 
+                    Color(0xFF3D0A0A).copy(alpha = 0.8f) // Rojo oscuro para otras canciones
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        val artBitmap = albumArt
+        if (artBitmap != null) {
+            Image(
+                bitmap = artBitmap,
+                contentDescription = "Portada",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.ic_music_note),
+                contentDescription = "Sin portada",
+                tint = if (isCurrentSong) Color.White else Color(0xFFBBBBBB),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        
+        // Indicador de reproducción
+        if (isCurrentSong && isPlaying) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Color.Black.copy(alpha = 0.6f),
+                        RoundedCornerShape(8.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_play),
+                    contentDescription = "Reproduciendo",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
 }
 
 
