@@ -36,7 +36,7 @@ class PlaybackService : MediaSessionService() {
     private var currentSongIndex: Int = 0
     
     // Control de notificaciones
-    private var notificationsAllowed = false // Por defecto habilitado
+    private var notificationsAllowed = true // Por defecto habilitado
     
     companion object {
         // Comandos personalizados para acciones específicas
@@ -70,16 +70,24 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentSongIndex = player.currentMediaItemIndex
+                // Suprimir notificaciones si están deshabilitadas
+                if (!notificationsAllowed) {
+                    updateNotificationState()
+                }
             }
             
             override fun onPlaybackStateChanged(playbackState: Int) {
-                // Controlar notificaciones según estado y permisos
-                updateSystemNotifications()
+                // Suprimir notificaciones en cualquier cambio de estado si están deshabilitadas
+                if (!notificationsAllowed) {
+                    updateNotificationState()
+                }
             }
             
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                // Controlar notificaciones cuando inicia/pausa reproducción
-                updateSystemNotifications()
+                // Suprimir notificaciones cuando cambie el estado de reproducción si están deshabilitadas
+                if (!notificationsAllowed) {
+                    updateNotificationState()
+                }
             }
         })
         
@@ -140,10 +148,8 @@ class PlaybackService : MediaSessionService() {
                 }
                 CUSTOM_COMMAND_SET_NOTIFICATIONS -> {
                     notificationsAllowed = args.getBoolean("notifications_allowed", false)
-                    
-                    // Actualizar notificaciones del sistema sin afectar funcionalidad interna
-                    updateSystemNotifications()
-                    
+                    // Control agresivo de notificaciones
+                    updateNotificationState()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
@@ -170,48 +176,7 @@ class PlaybackService : MediaSessionService() {
         }
     }
     
-    /**
-     * Controla las notificaciones del sistema sin afectar la funcionalidad interna
-     */
-    private fun updateSystemNotifications() {
-        // Usar el método agresivo para suprimir notificaciones de ExoPlayer
-        suppressExoPlayerNotifications()
-    }
-    
-    /**
-     * Control agresivo de notificaciones de ExoPlayer
-     */
-    private fun suppressExoPlayerNotifications() {
-        try {
-            if (!notificationsAllowed) {
-                // Detener servicio foreground
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                
-                // Cancelar todas las notificaciones del sistema
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancelAll()
-                
-                // Usar un handler para cancelar notificaciones que aparezcan después
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    try {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        notificationManager.cancelAll()
-                    } catch (e: Exception) {
-                        // Ignorar errores
-                    }
-                }, 100) // Cancelar después de 100ms
-            }
-        } catch (e: Exception) {
-            // Ignorar errores
-        }
-    }
-    
-    /**
-     * Fuerza la eliminación de la notificación del sistema (NO afecta funcionalidad interna)
-     */
-    private fun forceRemoveNotification() {
-        suppressExoPlayerNotifications()
-    }
+
     
     /**
      * Configura la playlist desde una lista de canciones
@@ -258,10 +223,70 @@ class PlaybackService : MediaSessionService() {
         } else null
     }
     
+    // Control agresivo de notificaciones
+    private fun updateNotificationState() {
+        if (!notificationsAllowed) {
+            // Suprimir todas las notificaciones agresivamente
+            suppressAllNotifications()
+        }
+    }
+    
+    // Método para suprimir todas las notificaciones de forma agresiva
+    private fun suppressAllNotifications() {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            // 1. Detener foreground service inmediatamente
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            
+            // 2. Cancelar TODAS las notificaciones
+            notificationManager.cancelAll()
+            
+            // 3. Cancelar notificaciones por ID específicos (ExoPlayer suele usar estos)
+            for (id in 1..1000) {
+                try {
+                    notificationManager.cancel(id)
+                } catch (e: Exception) {
+                    // Continuar
+                }
+            }
+            
+            // 4. Programar cancelaciones periódicas para notificaciones persistentes
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            
+            // Cancelación inmediata
+            handler.post {
+                try {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    notificationManager.cancelAll()
+                } catch (e: Exception) { }
+            }
+            
+            // Cancelación después de 50ms
+            handler.postDelayed({
+                try {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    notificationManager.cancelAll()
+                } catch (e: Exception) { }
+            }, 50)
+            
+            // Cancelación después de 200ms
+            handler.postDelayed({
+                try {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    notificationManager.cancelAll()
+                } catch (e: Exception) { }
+            }, 200)
+            
+        } catch (e: Exception) {
+            // Continuar sin errores
+        }
+    }
+    
     // Implementación requerida de MediaSessionService
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        // SIEMPRE permitir conexiones de la app (para MiniPlayer interno)
-        // Solo controlar notificaciones del sistema por separado
+        // SIEMPRE devolver mediaSession para que el reproductor funcione
+        // Las notificaciones se controlan por separado
         return mediaSession
     }
     

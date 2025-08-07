@@ -47,10 +47,9 @@ class MediaControllerManager(private val context: Context) {
     val playbackState: StateFlow<Int> = _playbackState.asStateFlow()
     
     /**
-     * Establece si las notificaciones del sistema están permitidas (NO afecta MiniPlayer de la app)
+     * Establece si las notificaciones están permitidas por el usuario
      */
     fun setNotificationsAllowed(allowed: Boolean) {
-        // Solo enviar comando al servicio para controlar notificaciones del sistema
         try {
             mediaController?.let { controller ->
                 val bundle = android.os.Bundle().apply {

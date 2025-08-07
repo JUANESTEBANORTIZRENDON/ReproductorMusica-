@@ -101,21 +101,32 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    // PASO 1: Configurar notificaciones según historial
+                    // PARA TESTING: Resetear permisos para forzar solicitud
+                    sharedPrefs.edit().clear().apply()
+                    println("DEBUG: Permisos reseteados para testing")
+                    
+                    // FORZAR solicitud de permisos en orden correcto
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (!notificationPermissionAsked) {
-                            // PRIMERA VEZ - Solicitar permisos de notificaciones PRIMERO
+                        // Verificar si ya se solicitaron los permisos de notificaciones
+                        val alreadyAsked = sharedPrefs.getBoolean("notification_permission_asked", false)
+                        println("DEBUG: Android ${Build.VERSION.SDK_INT}, alreadyAsked: $alreadyAsked")
+                        
+                        if (!alreadyAsked) {
+                            // PRIMERA VEZ - SIEMPRE solicitar permisos de notificaciones PRIMERO
+                            println("DEBUG: Solicitando permisos de notificaciones por primera vez")
                             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         } else {
-                            // Ya se pidió antes, configurar y continuar
+                            // Ya se pidió antes, usar resultado guardado
                             val granted = sharedPrefs.getBoolean("notification_permission_granted", false)
+                            println("DEBUG: Permisos ya solicitados antes. Granted: $granted")
+                            
+                            // Configurar servicio
                             coroutineScope.launch {
-                                delay(500) // Esperar para que el servicio esté listo
+                                delay(500)
                                 mediaControllerManager.setNotificationsAllowed(granted)
                             }
-                            notificationsConfigured = true
                             
-                            // Solicitar almacenamiento
+                            // Continuar con almacenamiento
                             val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 Manifest.permission.READ_MEDIA_AUDIO
                             } else {
@@ -124,11 +135,11 @@ class MainActivity : ComponentActivity() {
                             storagePermissionLauncher.launch(storagePermission)
                         }
                     } else {
-                        // Android 12 y anteriores - habilitar notificaciones y continuar
+                        // Android 12 y anteriores - habilitar notificaciones por defecto
+                        println("DEBUG: Android 12 o anterior, habilitando notificaciones por defecto")
                         mediaControllerManager.setNotificationsAllowed(true)
-                        notificationsConfigured = true
                         
-                        // Solicitar almacenamiento
+                        // Solicitar solo almacenamiento
                         storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
                     }
                 }
