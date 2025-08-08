@@ -23,6 +23,9 @@ import kotlinx.coroutines.launch
  * Manager que maneja la conexión y comunicación con el PlaybackService
  * a través de MediaController. Proporciona una interfaz reactiva para la UI.
  */
+import android.os.Bundle
+import androidx.media3.session.SessionCommand
+
 class MediaControllerManager(private val context: Context) {
     
     private var mediaController: MediaController? = null
@@ -33,6 +36,21 @@ class MediaControllerManager(private val context: Context) {
     // Estados reactivos para la UI
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    // --- SHUFFLE Y REPEAT ---
+    private val _isShuffleEnabled = MutableStateFlow(false)
+    val isShuffleEnabled: StateFlow<Boolean> = _isShuffleEnabled.asStateFlow()
+
+    /** Forzar estado de shuffle (ON/OFF) desde ViewModel */
+    fun setShuffleEnabled(enabled: Boolean) {
+        mediaController?.let {
+            it.shuffleModeEnabled = enabled
+            _isShuffleEnabled.value = enabled // Feedback inmediato
+        }
+    }
+
+    private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
     
     private val _currentPosition = MutableStateFlow(0L)
     val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
@@ -98,15 +116,32 @@ class MediaControllerManager(private val context: Context) {
             
             override fun onPlaybackStateChanged(playbackState: Int) {
                 _playbackState.value = playbackState
-                
+                // Actualizar shuffle y repeat
+                mediaController?.let { controller ->
+                    _isShuffleEnabled.value = controller.shuffleModeEnabled
+                    _repeatMode.value = controller.repeatMode
+                }
                 // Actualizar duración cuando el player esté preparado
                 if (playbackState == Player.STATE_READY) {
                     updateDurationAndPosition()
                 }
             }
             
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                _repeatMode.value = repeatMode
+            }
+            
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                _isShuffleEnabled.value = shuffleModeEnabled
+            }
+            
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 updateCurrentSong()
+                // Actualizar shuffle y repeat
+                mediaController?.let { controller ->
+                    _isShuffleEnabled.value = controller.shuffleModeEnabled
+                    _repeatMode.value = controller.repeatMode
+                }
                 // Forzar actualización de duración al cambiar de canción
                 updateDurationAndPosition()
             }
@@ -128,11 +163,11 @@ class MediaControllerManager(private val context: Context) {
             _playbackState.value = controller.playbackState
             _currentPosition.value = controller.currentPosition
             _duration.value = if (controller.duration > 0) controller.duration else 0L
+            _isShuffleEnabled.value = controller.shuffleModeEnabled
+            _repeatMode.value = controller.repeatMode
             updateCurrentSong()
-            
             // Forzar actualización inicial de duración y posición
             updateDurationAndPosition()
-            
             // Si ya está reproduciendo, iniciar actualizaciones
             if (controller.isPlaying) {
                 startPositionUpdates()
@@ -338,6 +373,26 @@ class MediaControllerManager(private val context: Context) {
         return mediaController?.duration ?: 0L
     }
     
+    /**
+     * Alterna el modo aleatorio (shuffle)
+     */
+    fun toggleShuffle() {
+        val cmd = SessionCommand("TOGGLE_SHUFFLE", Bundle.EMPTY)
+        mediaController?.sendCustomCommand(cmd, Bundle())
+    }
+
+    /**
+     * Alterna el modo de repetición (repeat)
+     */
+    fun toggleRepeat() {
+        val cmd = SessionCommand("TOGGLE_REPEAT", Bundle.EMPTY)
+        mediaController?.sendCustomCommand(cmd, Bundle())
+        // Actualizar estado inmediatamente para feedback visual
+        mediaController?.let { controller ->
+            _repeatMode.value = controller.repeatMode
+        }
+    }
+
     /**
      * Libera los recursos del MediaController
      */

@@ -22,6 +22,7 @@ import com.juan.reproductormusica.data.Song
 import com.juan.reproductormusica.presentation.components.SearchAndFilterBar
 import com.juan.reproductormusica.presentation.components.SleepTimerDialog
 import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
+import com.juan.reproductormusica.presentation.viewmodel.SortOption
 import kotlinx.coroutines.launch
 
 /**
@@ -96,14 +97,71 @@ fun MainTabScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Botón de filtros
-                IconButton(
-                    onClick = { /* Mostrar menú de filtros */ }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = "Filtros",
-                        tint = Color.White
-                    )
+                var showSortMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(
+                        onClick = { showSortMenu = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = "Filtros",
+                            tint = Color.White
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Título A-Z") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.TITLE_ASC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Título Z-A") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.TITLE_DESC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Artista A-Z") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.ARTIST_ASC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Artista Z-A") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.ARTIST_DESC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Duración ↑") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.DURATION_ASC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Duración ↓") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.DURATION_DESC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Por Carpeta") },
+                            onClick = {
+                                musicViewModel.updateSortOption(SortOption.DEFAULT)
+                                showSortMenu = false
+                            }
+                        )
+                    }
                 }
                 
                 // Botón del temporizador de suspensión

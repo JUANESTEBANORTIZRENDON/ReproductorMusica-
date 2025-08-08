@@ -55,6 +55,15 @@ class MusicViewModel(
     )
 
     // ========================================
+    // ESTADOS DE SHUFFLE Y REPEAT
+    // ========================================
+
+    /** Estado de reproducción aleatoria (shuffle) */
+    val isShuffleEnabled: StateFlow<Boolean> = mediaControllerManager.isShuffleEnabled
+    /** Estado del modo de repetición (OFF, ALL) */
+    val repeatMode: StateFlow<Int> = mediaControllerManager.repeatMode
+
+    // ========================================
     // ESTADOS DE BÚSQUEDA Y FILTRADO
     // ========================================
 
@@ -217,6 +226,33 @@ class MusicViewModel(
     // ========================================
     // EVENTOS DE USUARIO - GESTIÓN DE PLAYLIST
     // ========================================
+
+    /**
+     * Alterna el modo aleatorio (shuffle) del reproductor
+     */
+    fun toggleShuffle() {
+        viewModelScope.launch { mediaControllerManager.toggleShuffle() }
+    }
+
+    /**
+     * Alterna el modo de repetición (repeat) del reproductor
+     */
+    fun toggleRepeat() {
+        viewModelScope.launch { mediaControllerManager.toggleRepeat() }
+    }
+
+    /**
+     * Inicia reproducción aleatoria de la lista filtrada (Shuffle Play)
+     */
+    fun shuffleAndPlay() {
+        val base = filteredSongs.value
+        if (base.isEmpty()) return
+        // Forzar modo shuffle ON antes de reproducir
+        viewModelScope.launch { mediaControllerManager.setShuffleEnabled(true) }
+        val shuffled = base.shuffled()
+        setPlaylist(shuffled, startIndex = 0)
+        play()
+    }
 
     /**
      * Configura una nueva playlist y opcionalmente inicia la reproducción

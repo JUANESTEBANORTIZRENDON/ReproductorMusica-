@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,12 +15,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.juan.reproductormusica.R
 import com.juan.reproductormusica.data.Song
 import com.juan.reproductormusica.presentation.components.SearchResultsInfo
 import com.juan.reproductormusica.presentation.components.SongItem
 import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
 import com.juan.reproductormusica.presentation.viewmodel.SortOption
+import kotlinx.coroutines.launch
 import java.io.File
 
 @Composable
@@ -30,12 +32,12 @@ fun SongListScreen(
     // Estados reactivos desde MusicViewModel (patrón MVVM)
     val isPlaying by musicViewModel.isPlaying.collectAsState()
     val currentSong by musicViewModel.currentSong.collectAsState()
-    
+
     // Estados de búsqueda y filtrado
     val searchQuery by musicViewModel.searchQuery.collectAsState()
     val sortOption by musicViewModel.sortOption.collectAsState()
     val filteredSongs by musicViewModel.filteredSongs.collectAsState()
-    
+
     // Agrupar canciones filtradas por carpeta (solo para mostrar cuando no hay búsqueda activa)
     val shouldGroupByFolder = searchQuery.isEmpty() && sortOption == SortOption.DEFAULT
     val agrupadas = if (shouldGroupByFolder) {
@@ -58,23 +60,68 @@ fun SongListScreen(
         }
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    var navigateToNowPlaying by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFF1A0000)) // Fondo rojo muy oscuro
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // Información de resultados
-        SearchResultsInfo(
-            totalSongs = canciones.size,
-            filteredSongs = filteredSongs.size,
-            searchQuery = searchQuery,
-            sortOption = sortOption,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+        // Fila superior: info + botón Aleatorio
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SearchResultsInfo(
+                totalSongs = canciones.size,
+                filteredSongs = filteredSongs.size,
+                searchQuery = searchQuery,
+                sortOption = sortOption,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    musicViewModel.shuffleAndPlay()
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Reproducción aleatoria iniciada")
+                    }
+                    navigateToNowPlaying = true
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFB71C1C),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(24.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Shuffle,
+                    contentDescription = "Reproducción aleatoria",
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Aleatorio")
+            }
+        }
+
+        if (navigateToNowPlaying) {
+            // Integra con tu NavController real, ej:
+            // navController.navigate(MusicDestinations.NOW_PLAYING)
+            navigateToNowPlaying = false
+        }
+
+        SnackbarHost(hostState = snackbarHostState)
 
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp), 
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f)
         ) {
             if (shouldGroupByFolder && agrupadas.isNotEmpty()) {
@@ -119,7 +166,7 @@ fun SongListScreen(
                     )
                 }
             }
-            
+
             // Mensaje cuando no hay resultados
             if (filteredSongs.isEmpty() && canciones.isNotEmpty()) {
                 item {
@@ -158,11 +205,3 @@ fun SongListScreen(
         // El reproductor ahora es manejado por el MiniPlayer persistente en MusicNavigation
     }
 }
-
-
-
-
-
-
-
-

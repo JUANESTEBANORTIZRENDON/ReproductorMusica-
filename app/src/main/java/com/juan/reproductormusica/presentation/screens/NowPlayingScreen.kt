@@ -12,9 +12,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
+import androidx.media3.common.Player
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +66,15 @@ fun NowPlayingScreen(
     val playbackState by musicViewModel.playbackState.collectAsState()
     val favoriteSongIds by musicViewModel.favoriteSongIds.collectAsState()
     val playlistsWithSongs by musicViewModel.playlistsWithSongs.collectAsState()
+
+    // Estados de shuffle y repeat
+    val isShuffleEnabledVm by musicViewModel.isShuffleEnabled.collectAsState()
+    val repeatModeVm by musicViewModel.repeatMode.collectAsState()
+    var isShuffleEnabled by remember { mutableStateOf(isShuffleEnabledVm) }
+    var repeatMode by remember { mutableStateOf(repeatModeVm) }
+    // Sincronizar con backend
+    LaunchedEffect(isShuffleEnabledVm) { isShuffleEnabled = isShuffleEnabledVm }
+    LaunchedEffect(repeatModeVm) { repeatMode = repeatModeVm }
     
     // Estados del temporizador de suspensión
     val sleepTimerActive by musicViewModel.sleepTimerActive.collectAsState()
@@ -155,23 +168,66 @@ fun NowPlayingScreen(
         
         Spacer(modifier = Modifier.height(32.dp))
         
-        // Controles de reproducción
-        PlaybackControlsSection(
-            isPlaying = isPlaying,
-            onTogglePlayPause = {
-                // Delegar evento al ViewModel (patrón MVVM)
-                musicViewModel.togglePlayPause()
-            },
-            onSkipToPrevious = {
-                // Delegar evento al ViewModel (patrón MVVM)
-                musicViewModel.skipToPrevious()
-            },
-            onSkipToNext = {
-                // Delegar evento al ViewModel (patrón MVVM)
-                musicViewModel.skipToNext()
+        // Controles de reproducción + shuffle/repeat
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Botón Shuffle
+            IconButton(onClick = {
+                isShuffleEnabled = !isShuffleEnabled // feedback inmediato
+                musicViewModel.toggleShuffle()
+            }) {
+                Icon(
+                    imageVector = Icons.Filled.Shuffle,
+                    contentDescription = if (isShuffleEnabled) "Desactivar aleatorio" else "Activar aleatorio",
+                    tint = if (isShuffleEnabled) Color(0xFFB71C1C) else Color(0xFFCCCCCC),
+                    modifier = Modifier.size(32.dp)
+                )
             }
-        )
-        
+            // Botón anterior
+            IconButton(onClick = { musicViewModel.skipToPrevious() }) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_skip_previous),
+                    contentDescription = "Anterior",
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            // Play/Pause
+            IconButton(onClick = { musicViewModel.togglePlayPause() }) {
+                Icon(
+                    painter = painterResource(id = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
+                    contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            // Botón siguiente
+            IconButton(onClick = { musicViewModel.skipToNext() }) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_skip_next),
+                    contentDescription = "Siguiente",
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            // Botón Repeat
+            IconButton(onClick = {
+                musicViewModel.toggleRepeat()
+            }) {
+                Icon(
+                    imageVector = if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                    contentDescription = if (repeatMode == Player.REPEAT_MODE_ONE) "Repetir canción actual" else "Repetición desactivada",
+                    tint = if (repeatMode == Player.REPEAT_MODE_ONE) Color(0xFFB71C1C) else Color(0xFFCCCCCC),
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
     }
     
