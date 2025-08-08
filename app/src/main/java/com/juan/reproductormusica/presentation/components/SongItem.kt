@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,7 +37,8 @@ fun SongItem(
     song: Song,
     isCurrentSong: Boolean = false,
     isPlaying: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onRemoveFromPlaylist: (() -> Unit)? = null // Función opcional para eliminar de playlist
 ) {
     Card(
         modifier = Modifier
@@ -100,6 +103,21 @@ fun SongItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            
+            // Botón de eliminar de playlist (si está disponible)
+            if (onRemoveFromPlaylist != null) {
+                IconButton(
+                    onClick = onRemoveFromPlaylist,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Eliminar de playlist",
+                        tint = Color(0xFF999999),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
             
             if (isCurrentSong) {

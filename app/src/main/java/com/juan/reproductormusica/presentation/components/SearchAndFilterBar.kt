@@ -42,7 +42,7 @@ fun SearchAndFilterBar(
 
     // --- Controles de orden opcionales ---
     showSortControls: Boolean = true,
-    sortOption: SortOption = SortOption.DEFAULT,
+    sortOption: SortOption? = SortOption.DEFAULT,
     onSortOptionChange: (SortOption) -> Unit = {},
 
     // Limpiar búsqueda (opcional). Si no lo pasas, no hace nada.
@@ -87,7 +87,7 @@ fun SearchAndFilterBar(
                 ) {
                     Card(
                         modifier = Modifier
-                            .width(220.dp) // Ancho reducido para no tocar el filtro
+                            .width(180.dp) // Ancho más reducido para evitar superposición
                             .offset(x = 48.dp), // Posicionar al frente del icono
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF2C1010)),
                         shape = RoundedCornerShape(12.dp),
@@ -138,7 +138,7 @@ fun SearchAndFilterBar(
             val canShowOrderInfo = showSortControls && !showSearchField && searchQuery.isEmpty()
             if (canShowOrderInfo) {
                 Text(
-                    text = "Ordenar: ${sortOption.displayName}",
+                    text = "Ordenar: ${sortOption?.displayName}",
                     style = TextStyle(
                         fontFamily = MusicFont,
                         color = Color(0xFFCCCCCC),

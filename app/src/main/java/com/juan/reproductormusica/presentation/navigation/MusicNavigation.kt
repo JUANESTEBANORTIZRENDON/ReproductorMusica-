@@ -16,6 +16,7 @@ import com.juan.reproductormusica.presentation.components.MiniPlayer
 import com.juan.reproductormusica.presentation.screens.FolderSongsScreen
 import com.juan.reproductormusica.presentation.screens.MainTabScreen
 import com.juan.reproductormusica.presentation.screens.NowPlayingScreen
+import com.juan.reproductormusica.presentation.screens.PlaylistSongsScreen
 import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
 
 /**
@@ -25,8 +26,10 @@ object MusicDestinations {
     const val MAIN_TABS = "main_tabs"
     const val NOW_PLAYING = "now_playing"
     const val FOLDER_SONGS = "folder_songs/{folderName}"
+    const val PLAYLIST_SONGS = "playlist_songs/{playlistId}"
     
     fun createFolderSongsRoute(folderName: String) = "folder_songs/$folderName"
+    fun createPlaylistSongsRoute(playlistId: Long) = "playlist_songs/$playlistId"
 }
 
 /**
@@ -54,7 +57,7 @@ fun MusicNavigation(
             startDestination = MusicDestinations.MAIN_TABS,
             modifier = Modifier.fillMaxSize()
         ) {
-            // Pantalla principal con pestañas (Canciones y Carpetas)
+            // Pantalla principal con pestañas (Canciones, Carpetas y Playlists)
             composable(MusicDestinations.MAIN_TABS) {
                 MainTabScreen(
                     songs = songs,
@@ -80,6 +83,20 @@ fun MusicNavigation(
                 val folderName = backStackEntry.arguments?.getString("folderName")!!
                 FolderSongsScreen(
                     folderName = folderName,
+                    musicViewModel = musicViewModel,
+                    navController = navController,
+                    modifier = if (shouldShowMiniPlayer) Modifier.padding(bottom = 80.dp) else Modifier
+                )
+            }
+            
+            // Pantalla de canciones por playlist
+            composable(
+                route = MusicDestinations.PLAYLIST_SONGS,
+                arguments = listOf(navArgument("playlistId") { type = NavType.LongType })
+            ) { backStackEntry ->
+                val playlistId = backStackEntry.arguments?.getLong("playlistId")!!
+                PlaylistSongsScreen(
+                    playlistId = playlistId,
                     musicViewModel = musicViewModel,
                     navController = navController,
                     modifier = if (shouldShowMiniPlayer) Modifier.padding(bottom = 80.dp) else Modifier
@@ -129,6 +146,12 @@ fun NavHostController.navigateToMainTabs() {
 
 fun NavHostController.navigateToFolderSongs(folderName: String) {
     navigate(MusicDestinations.createFolderSongsRoute(folderName)) {
+        launchSingleTop = true
+    }
+}
+
+fun NavHostController.navigateToPlaylistSongs(playlistId: Long) {
+    navigate(MusicDestinations.createPlaylistSongsRoute(playlistId)) {
         launchSingleTop = true
     }
 }

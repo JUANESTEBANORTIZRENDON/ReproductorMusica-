@@ -7,10 +7,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +38,9 @@ fun FolderSongsScreen(
 ) {
     // Estado de búsqueda local para esta pantalla
     var localSearchQuery by remember { mutableStateOf("") }
+    
+    // Estado para mostrar/ocultar la barra de búsqueda
+    var showSearchBar by remember { mutableStateOf(false) }
     
     // Obtener todas las canciones de la carpeta
     val allSongsInFolder by remember(folderName) {
@@ -70,7 +76,7 @@ fun FolderSongsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color(0xFF1A0000))
     ) {
         // Top App Bar con botón de retroceso
         TopAppBar(
@@ -106,20 +112,54 @@ fun FolderSongsScreen(
                     )
                 }
             },
+            actions = {
+                // Botón de búsqueda en el TopAppBar
+                IconButton(
+                    onClick = { 
+                        showSearchBar = !showSearchBar
+                        if (!showSearchBar) {
+                            localSearchQuery = ""
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Búsqueda",
+                        tint = if (showSearchBar || localSearchQuery.isNotEmpty()) Color(0xFFB71C1C) else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.surface,
                 titleContentColor = MaterialTheme.colorScheme.onSurface
             )
         )
 
-        // Barra de búsqueda
-        SearchAndFilterBar(
-            searchQuery = localSearchQuery,
-            onSearchQueryChange = { localSearchQuery = it },
-            showSortControls = false, // No mostrar controles de ordenamiento en esta pantalla
-            onClearSearch = { localSearchQuery = "" },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        // Barra de búsqueda delgada (aparece solo cuando se presiona el botón de búsqueda)
+        if (showSearchBar) {
+            OutlinedTextField(
+                value = localSearchQuery,
+                onValueChange = { localSearchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { 
+                    Text(
+                        "Buscar por título, artista...",
+                        color = Color.Gray
+                    ) 
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFFB71C1C),
+                    unfocusedBorderColor = Color.Gray,
+                    cursorColor = Color(0xFFB71C1C)
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
 
         // Contenido principal
         if (filteredSongs.isEmpty()) {

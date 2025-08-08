@@ -5,11 +5,18 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
 import com.juan.reproductormusica.data.Song
+import com.juan.reproductormusica.data.database.PlaylistEntity
+import com.juan.reproductormusica.data.database.PlaylistWithSongs
+import com.juan.reproductormusica.repository.PlaylistRepository
 import com.juan.reproductormusica.service.MediaControllerManager
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import java.io.File
+import java.util.Calendar
+import kotlin.system.exitProcess
 
 /**
  * ViewModel que gestiona el estado de reproducción de música siguiendo el patrón MVVM.
@@ -25,8 +32,27 @@ import java.io.File
  */
 @OptIn(FlowPreview::class)
 class MusicViewModel(
-    private val mediaControllerManager: MediaControllerManager
+    private val mediaControllerManager: MediaControllerManager,
+    val playlistRepository: PlaylistRepository
 ) : ViewModel() {
+
+    // ========================================
+    // ESTADOS DE PLAYLISTS
+    // ========================================
+
+    /** Lista de todas las playlists con sus canciones */
+    val playlistsWithSongs: StateFlow<List<PlaylistWithSongs>> = playlistRepository.playlistsWithSongs.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    /** Set de IDs de canciones favoritas para verificación rápida */
+    val favoriteSongIds: StateFlow<Set<Long>> = playlistRepository.getFavoriteSongIds().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptySet()
+    )
 
     // ========================================
     // ESTADOS DE BÚSQUEDA Y FILTRADO
@@ -81,6 +107,24 @@ class MusicViewModel(
 
     /** Estado del reproductor (IDLE, BUFFERING, READY, ENDED) */
     val playbackState: StateFlow<Int> = mediaControllerManager.playbackState
+
+    // ========================================
+    // TEMPORIZADOR DE SUSPENSIÓN (SLEEP TIMER)
+    // ========================================
+
+    private var sleepTimerJob: Job? = null
+    private val _sleepTimerActive = MutableStateFlow(false)
+    private val _sleepTimerEndTime = MutableStateFlow<Long?>(null)
+    private val _sleepTimerRemainingTime = MutableStateFlow(0L)
+
+    /** Indica si el temporizador de suspensión está activo */
+    val sleepTimerActive: StateFlow<Boolean> = _sleepTimerActive.asStateFlow()
+
+    /** Hora de finalización del temporizador en milisegundos */
+    val sleepTimerEndTime: StateFlow<Long?> = _sleepTimerEndTime.asStateFlow()
+
+    /** Tiempo restante del temporizador en milisegundos */
+    val sleepTimerRemainingTime: StateFlow<Long> = _sleepTimerRemainingTime.asStateFlow()
 
     // ========================================
     // EVENTOS DE USUARIO - BÚSQUEDA Y FILTRADO
@@ -215,6 +259,110 @@ class MusicViewModel(
     }
 
     // ========================================
+    // EVENTOS DE USUARIO - GESTIÓN DE PLAYLISTS
+    // ========================================
+
+    /**
+     * Inicializa la playlist de favoritos (llamado desde MainActivity)
+     */
+    fun initializePlaylists() {
+        viewModelScope.launch {
+            playlistRepository.initializeFavoritesPlaylist()
+        }
+    }
+
+    /**
+     * Crea una nueva playlist
+     */
+    fun createPlaylist(name: String) {
+        viewModelScope.launch {
+            playlistRepository.createPlaylist(name)
+        }
+    }
+
+    /**
+     * Crea una nueva playlist y agrega automáticamente la canción especificada
+     */
+    fun createPlaylistWithSong(name: String, song: Song) {
+        viewModelScope.launch {
+            val playlistId = playlistRepository.createPlaylist(name)
+            if (playlistId > 0) {
+                playlistRepository.addSongToPlaylist(song, playlistId)
+            }
+        }
+    }
+
+    /**
+     * Elimina una playlist
+     */
+    fun deletePlaylist(playlistId: Long) {
+        viewModelScope.launch {
+            playlistRepository.deletePlaylist(playlistId)
+        }
+    }
+
+    /**
+     * Renombra una playlist
+     */
+    fun renamePlaylist(playlistId: Long, newName: String) {
+        viewModelScope.launch {
+            playlistRepository.renamePlaylist(playlistId, newName)
+        }
+    }
+
+    /**
+     * Añade una canción a una playlist específica
+     */
+    fun addSongToPlaylist(song: Song, playlistId: Long) {
+        viewModelScope.launch {
+            playlistRepository.addSongToPlaylist(song, playlistId)
+        }
+    }
+
+    /**
+     * Quita una canción de una playlist específica
+     */
+    fun removeSongFromPlaylist(songId: Long, playlistId: Long) {
+        viewModelScope.launch {
+            playlistRepository.removeSongFromPlaylist(songId, playlistId)
+        }
+    }
+
+    /**
+     * Alterna el estado de favorito de una canción
+     */
+    fun toggleFavorite(song: Song) {
+        viewModelScope.launch {
+            playlistRepository.toggleFavorite(song)
+        }
+    }
+
+    /**
+     * Verifica si una canción está en favoritos
+     */
+    fun isSongFavorite(songId: Long): Boolean {
+        return favoriteSongIds.value.contains(songId)
+    }
+
+    /**
+     * Obtiene una playlist con sus canciones
+     */
+    fun getPlaylistWithSongs(playlistId: Long): Flow<PlaylistWithSongs?> {
+        return playlistRepository.getPlaylistWithSongs(playlistId)
+    }
+
+    /**
+     * Obtiene las canciones de una playlist como Song (para reproducción)
+     */
+    fun getSongsFromPlaylist(playlistId: Long): Flow<List<Song>> {
+        return playlistRepository.getSongsInPlaylist(playlistId).map { songEntities ->
+            songEntities.map { entity ->
+                with(playlistRepository) { entity.toSong() }
+            }
+        }
+    }
+
+    // ========================================
     // MÉTODOS DE UTILIDAD
     // ========================================
 
@@ -253,11 +401,133 @@ class MusicViewModel(
     }
 
     // ========================================
+    // MÉTODOS DEL TEMPORIZADOR DE SUSPENSIÓN
+    // ========================================
+
+    /**
+     * Configura el temporizador de suspensión para una hora específica
+     */
+    fun setSleepTimer(hour: Int, minute: Int) {
+        // Cancelar temporizador anterior si existe
+        cancelSleepTimer()
+        
+        val calendar = Calendar.getInstance()
+        val now = System.currentTimeMillis()
+        
+        // Configurar la hora objetivo
+        calendar.set(Calendar.HOUR_OF_DAY, hour)
+        calendar.set(Calendar.MINUTE, minute)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        
+        var targetTime = calendar.timeInMillis
+        
+        // Si la hora ya pasó hoy, programar para mañana
+        if (targetTime <= now) {
+            calendar.add(Calendar.DAY_OF_MONTH, 1)
+            targetTime = calendar.timeInMillis
+        }
+        
+        val delayMs = targetTime - now
+        
+        _sleepTimerActive.value = true
+        _sleepTimerEndTime.value = targetTime
+        
+        sleepTimerJob = viewModelScope.launch {
+            // Actualizar tiempo restante cada segundo
+            while (_sleepTimerActive.value && System.currentTimeMillis() < targetTime) {
+                val remaining = targetTime - System.currentTimeMillis()
+                _sleepTimerRemainingTime.value = remaining.coerceAtLeast(0)
+                delay(1000)
+            }
+            
+            // Ejecutar suspensión si el temporizador no fue cancelado
+            if (_sleepTimerActive.value) {
+                executeSleepAction()
+            }
+        }
+    }
+
+    /**
+     * Configura el temporizador de suspensión para un tiempo específico en minutos
+     */
+    fun setSleepTimerInMinutes(minutes: Int) {
+        // Cancelar temporizador anterior si existe
+        cancelSleepTimer()
+        
+        val now = System.currentTimeMillis()
+        val targetTime = now + (minutes * 60 * 1000L)
+        
+        _sleepTimerActive.value = true
+        _sleepTimerEndTime.value = targetTime
+        
+        sleepTimerJob = viewModelScope.launch {
+            // Actualizar tiempo restante cada segundo
+            while (_sleepTimerActive.value && System.currentTimeMillis() < targetTime) {
+                val remaining = targetTime - System.currentTimeMillis()
+                _sleepTimerRemainingTime.value = remaining.coerceAtLeast(0)
+                delay(1000)
+            }
+            
+            // Ejecutar suspensión si el temporizador no fue cancelado
+            if (_sleepTimerActive.value) {
+                executeSleepAction()
+            }
+        }
+    }
+
+    /**
+     * Cancela el temporizador de suspensión activo
+     */
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimerActive.value = false
+        _sleepTimerEndTime.value = null
+        _sleepTimerRemainingTime.value = 0L
+    }
+
+    /**
+     * Ejecuta la acción de suspensión: detiene la reproducción y cierra la app
+     */
+    private fun executeSleepAction() {
+        viewModelScope.launch {
+            // Detener la reproducción
+            pause()
+            
+            // Resetear estados del temporizador
+            _sleepTimerActive.value = false
+            _sleepTimerEndTime.value = null
+            _sleepTimerRemainingTime.value = 0L
+            
+            // Cerrar la aplicación después de un breve delay
+            delay(500)
+            exitProcess(0)
+        }
+    }
+
+    /**
+     * Formatea el tiempo restante del temporizador a formato legible
+     */
+    fun formatSleepTimerRemaining(timeMs: Long): String {
+        if (timeMs <= 0) return "00:00:00"
+        
+        val totalSeconds = timeMs / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
+    // ========================================
     // GESTIÓN DE RECURSOS
     // ========================================
 
     override fun onCleared() {
         super.onCleared()
+        // Cancelar temporizador de suspensión si está activo
+        cancelSleepTimer()
         // El MediaControllerManager se libera en MainActivity.onDestroy()
     }
 
@@ -266,12 +536,13 @@ class MusicViewModel(
     // ========================================
 
     class Factory(
-        private val mediaControllerManager: MediaControllerManager
+        private val mediaControllerManager: MediaControllerManager,
+        private val playlistRepository: PlaylistRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(MusicViewModel::class.java)) {
-                return MusicViewModel(mediaControllerManager) as T
+                return MusicViewModel(mediaControllerManager, playlistRepository) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }

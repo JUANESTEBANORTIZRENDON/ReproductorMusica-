@@ -67,9 +67,14 @@ dependencies {
 
     implementation(libs.androidx.media)
 
+    implementation(libs.androidx.material.icons.extended)
+
+
+
 
     // ROOM
     implementation(libs.roomRuntime)
+    implementation(libs.roomKtx)
     kapt(libs.roomCompiler)
 
 // LIFECYCLE & VIEWMODEL

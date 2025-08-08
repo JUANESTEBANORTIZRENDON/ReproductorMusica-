@@ -17,7 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import com.juan.reproductormusica.data.Song
+import com.juan.reproductormusica.data.database.MusicDatabase
 import com.juan.reproductormusica.repository.MusicRepository
+import com.juan.reproductormusica.repository.PlaylistRepository
 import com.juan.reproductormusica.service.MediaControllerManager
 import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
 import com.juan.reproductormusica.presentation.navigation.MusicNavigation
@@ -28,9 +30,14 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     
     private lateinit var mediaControllerManager: MediaControllerManager
+    private lateinit var playlistRepository: PlaylistRepository
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Inicializar base de datos y repositorio de playlists
+        val database = MusicDatabase.getDatabase(this)
+        playlistRepository = PlaylistRepository(database.playlistDao())
         
         // Inicializar MediaControllerManager
         mediaControllerManager = MediaControllerManager(this)
@@ -42,7 +49,7 @@ class MainActivity : ComponentActivity() {
                 
                 // Crear ViewModel con Factory para inyección de dependencias
                 val musicViewModel: MusicViewModel = viewModel(
-                    factory = MusicViewModel.Factory(mediaControllerManager)
+                    factory = MusicViewModel.Factory(mediaControllerManager, playlistRepository)
                 )
                 
                 // Crear NavController
@@ -148,6 +155,8 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(canciones) {
                     if (canciones.isNotEmpty()) {
                         musicViewModel.setAllSongs(canciones)
+                        // Inicializar sistema de playlists
+                        musicViewModel.initializePlaylists()
                     }
                 }
 

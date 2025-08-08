@@ -2,11 +2,18 @@ package com.juan.reproductormusica.presentation.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.juan.reproductormusica.R
 import com.juan.reproductormusica.data.Song
+import com.juan.reproductormusica.data.database.PlaylistWithSongs
+import com.juan.reproductormusica.presentation.components.SleepTimerDialog
 import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
 import com.juan.reproductormusica.utils.AlbumArtUtils
 import java.io.File
@@ -51,6 +60,16 @@ fun NowPlayingScreen(
     val position by musicViewModel.position.collectAsState()
     val duration by musicViewModel.duration.collectAsState()
     val playbackState by musicViewModel.playbackState.collectAsState()
+    val favoriteSongIds by musicViewModel.favoriteSongIds.collectAsState()
+    val playlistsWithSongs by musicViewModel.playlistsWithSongs.collectAsState()
+    
+    // Estados del temporizador de suspensión
+    val sleepTimerActive by musicViewModel.sleepTimerActive.collectAsState()
+    val sleepTimerRemainingTime by musicViewModel.sleepTimerRemainingTime.collectAsState()
+    
+    // Estados para diálogos
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
     
     Column(
         modifier = Modifier
@@ -83,8 +102,16 @@ fun NowPlayingScreen(
                 )
             )
             
-            // Espacio para mantener el título centrado
-            Spacer(modifier = Modifier.width(48.dp))
+            // Botón del temporizador de suspensión
+            IconButton(
+                onClick = { showSleepTimerDialog = true }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = "Temporizador de suspensión",
+                    tint = if (sleepTimerActive) Color(0xFFB71C1C) else Color.White
+                )
+            }
         }
         
         Spacer(modifier = Modifier.height(32.dp))
@@ -102,6 +129,16 @@ fun NowPlayingScreen(
         // Información de la canción
         currentSong?.let { song ->
             SongInfoSection(song = song)
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Botones de playlist (favoritos y añadir a playlist)
+        currentSong?.let { song ->
+            PlaylistActionsSection(
+                isFavorite = favoriteSongIds.contains(song.id),
+                onToggleFavorite = { musicViewModel.toggleFavorite(song) }
+            ) { showAddToPlaylistDialog = true }
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -136,6 +173,46 @@ fun NowPlayingScreen(
         )
         
         Spacer(modifier = Modifier.weight(1f))
+    }
+    
+    // Diálogo para añadir a playlist
+    if (showAddToPlaylistDialog) {
+        currentSong?.let { song ->
+            AddToPlaylistDialog(
+                song = song,
+                playlists = playlistsWithSongs,
+                onDismiss = { showAddToPlaylistDialog = false },
+                onAddToPlaylist = { playlistId ->
+                    musicViewModel.addSongToPlaylist(song, playlistId)
+                    showAddToPlaylistDialog = false
+                },
+                onCreateNewPlaylist = { name ->
+                    musicViewModel.createPlaylistWithSong(name, song)
+                    showAddToPlaylistDialog = false
+                }
+            )
+        }
+    }
+    
+    // Diálogo del temporizador de suspensión
+    if (showSleepTimerDialog) {
+        SleepTimerDialog(
+            isActive = sleepTimerActive,
+            remainingTime = sleepTimerRemainingTime,
+            onDismiss = { showSleepTimerDialog = false },
+            onSetTimer = { hour, minute ->
+                musicViewModel.setSleepTimer(hour, minute)
+            },
+            onSetTimerInMinutes = { minutes ->
+                musicViewModel.setSleepTimerInMinutes(minutes)
+            },
+            onCancelTimer = {
+                musicViewModel.cancelSleepTimer()
+            },
+            formatRemainingTime = { timeMs ->
+                musicViewModel.formatSleepTimerRemaining(timeMs)
+            }
+        )
     }
 }
 
@@ -338,5 +415,209 @@ private fun AlbumArtSection(
                 modifier = Modifier.size(120.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun PlaylistActionsSection(
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    onAddToPlaylist: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        // Botón de favoritos
+        IconButton(
+            onClick = onToggleFavorite,
+            modifier = Modifier
+                .size(48.dp)
+                .background(
+                    color = if (isFavorite) Color(0xFFB71C1C) else Color(0xFF2A0A0A),
+                    shape = CircleShape
+                )
+        ) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                contentDescription = if (isFavorite) "Quitar de favoritos" else "Agregar a favoritos",
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        
+        // Botón de agregar a playlist
+        IconButton(
+            onClick = onAddToPlaylist,
+            modifier = Modifier
+                .size(48.dp)
+                .background(
+                    color = Color(0xFF2A0A0A),
+                    shape = CircleShape
+                )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Agregar a playlist",
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddToPlaylistDialog(
+    song: Song?,
+    playlists: List<PlaylistWithSongs>,
+    onDismiss: () -> Unit,
+    onAddToPlaylist: (Long) -> Unit,
+    onCreateNewPlaylist: (String) -> Unit
+) {
+    var showCreateDialog by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Agregar a playlist",
+                color = Color.White
+            )
+        },
+        text = {
+            LazyColumn {
+                // Opción para crear nueva playlist
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clickable { showCreateDialog = true },
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF2A0A0A)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Crear nueva playlist",
+                                color = Color.White,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+                
+                // Lista de playlists existentes (excluyendo favoritos)
+                items(playlists.filter { it.playlist.playlistId != 1L }) { playlistWithSongs ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clickable { 
+                                onAddToPlaylist(playlistWithSongs.playlist.playlistId)
+                                onDismiss()
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF1A0000)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlaylistPlay,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = playlistWithSongs.playlist.name,
+                                    color = Color.White,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = "${playlistWithSongs.songs.size} canciones",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Color.White)
+            }
+        },
+        containerColor = Color(0xFF0D0D0D)
+    )
+    
+    // Diálogo para crear nueva playlist
+    if (showCreateDialog) {
+        var playlistName by remember { mutableStateOf("") }
+        
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = {
+                Text(
+                    text = "Nueva Playlist",
+                    color = Color.White
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = playlistName,
+                    onValueChange = { playlistName = it },
+                    label = { Text("Nombre de la playlist", color = Color.Gray) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFB71C1C),
+                        unfocusedBorderColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (playlistName.isNotBlank()) {
+                            onCreateNewPlaylist(playlistName.trim())
+                            showCreateDialog = false
+                            onDismiss()
+                        }
+                    }
+                ) {
+                    Text("Crear", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) {
+                    Text("Cancelar", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF0D0D0D)
+        )
     }
 }
