@@ -28,7 +28,7 @@ import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
 import com.juan.reproductormusica.utils.AlbumArtUtils
 import java.io.File
 
-private val MusicFont = FontFamily(Font(R.font.montserrat_medium))
+val MusicFont = FontFamily(Font(R.font.montserrat_medium))
 
 /**
  * Pantalla "Now Playing" que muestra los detalles de la canción actual

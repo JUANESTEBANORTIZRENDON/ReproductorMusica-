@@ -98,10 +98,17 @@ class MediaControllerManager(private val context: Context) {
             
             override fun onPlaybackStateChanged(playbackState: Int) {
                 _playbackState.value = playbackState
+                
+                // Actualizar duración cuando el player esté preparado
+                if (playbackState == Player.STATE_READY) {
+                    updateDurationAndPosition()
+                }
             }
             
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 updateCurrentSong()
+                // Forzar actualización de duración al cambiar de canción
+                updateDurationAndPosition()
             }
             
             override fun onPositionDiscontinuity(
@@ -110,6 +117,8 @@ class MediaControllerManager(private val context: Context) {
                 reason: Int
             ) {
                 _currentPosition.value = newPosition.positionMs
+                // También actualizar duración por si acaso
+                updateDurationAndPosition()
             }
         })
         
@@ -120,6 +129,14 @@ class MediaControllerManager(private val context: Context) {
             _currentPosition.value = controller.currentPosition
             _duration.value = if (controller.duration > 0) controller.duration else 0L
             updateCurrentSong()
+            
+            // Forzar actualización inicial de duración y posición
+            updateDurationAndPosition()
+            
+            // Si ya está reproduciendo, iniciar actualizaciones
+            if (controller.isPlaying) {
+                startPositionUpdates()
+            }
         }
     }
     
@@ -142,6 +159,32 @@ class MediaControllerManager(private val context: Context) {
     }
     
     /**
+     * Actualiza la duración y posición actuales desde el MediaController
+     */
+    private fun updateDurationAndPosition() {
+        mediaController?.let { controller ->
+            val currentDuration = controller.duration
+            val currentPosition = controller.currentPosition
+            
+            // Solo actualizar si tenemos valores válidos
+            if (currentDuration > 0) {
+                _duration.value = currentDuration
+            }
+            
+            if (currentPosition >= 0) {
+                _currentPosition.value = currentPosition
+            }
+            
+            // También actualizar la canción actual con la nueva duración
+            _currentSong.value?.let { song ->
+                if (song.duration != currentDuration && currentDuration > 0) {
+                    _currentSong.value = song.copy(duration = currentDuration)
+                }
+            }
+        }
+    }
+    
+    /**
      * Inicia las actualizaciones periódicas de posición
      */
     private fun startPositionUpdates() {
@@ -150,6 +193,19 @@ class MediaControllerManager(private val context: Context) {
             while (isActive && _isPlaying.value) {
                 mediaController?.let { controller ->
                     _currentPosition.value = controller.currentPosition
+                    
+                    // También actualizar duración si aún no la tenemos o cambió
+                    val currentDuration = controller.duration
+                    if (currentDuration > 0 && _duration.value != currentDuration) {
+                        _duration.value = currentDuration
+                        
+                        // Actualizar la canción actual con la nueva duración
+                        _currentSong.value?.let { song ->
+                            if (song.duration != currentDuration) {
+                                _currentSong.value = song.copy(duration = currentDuration)
+                            }
+                        }
+                    }
                 }
                 delay(500) // Actualizar cada 500ms
             }
@@ -184,6 +240,52 @@ class MediaControllerManager(private val context: Context) {
         
         mediaController?.setMediaItems(mediaItems, startIndex, 0)
         mediaController?.prepare()
+    }
+    
+    /**
+     * Actualiza la playlist sin cambiar la canción actual
+     */
+    fun updatePlaylistWithoutChangingSong(songs: List<Song>) {
+        mediaController?.let { controller ->
+            val currentSongId = controller.currentMediaItem?.mediaId
+            val currentPosition = controller.currentPosition
+            val wasPlaying = controller.isPlaying
+            
+            val mediaItems = songs.map { song ->
+                MediaItem.Builder()
+                    .setUri(song.data)
+                    .setMediaId(song.id.toString())
+                    .setMediaMetadata(
+                        androidx.media3.common.MediaMetadata.Builder()
+                            .setTitle(song.title)
+                            .setArtist(song.artist)
+                            .setIsPlayable(true)
+                            .build()
+                    )
+                    .build()
+            }
+            
+            // Buscar el índice de la canción actual en la nueva playlist
+            val newIndex = if (currentSongId != null) {
+                mediaItems.indexOfFirst { it.mediaId == currentSongId }
+            } else {
+                -1
+            }
+            
+            if (newIndex != -1) {
+                // La canción actual existe en la nueva playlist
+                controller.setMediaItems(mediaItems, newIndex, currentPosition)
+                controller.prepare()
+                
+                // Restaurar el estado de reproducción
+                if (wasPlaying) {
+                    controller.play()
+                }
+            } else {
+                // La canción actual no existe en la nueva playlist, usar el método normal
+                setPlaylist(songs, 0)
+            }
+        }
     }
     
     /**

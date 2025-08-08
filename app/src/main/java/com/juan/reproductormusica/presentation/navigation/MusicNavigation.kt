@@ -5,21 +5,28 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.juan.reproductormusica.data.Song
 import com.juan.reproductormusica.presentation.components.MiniPlayer
+import com.juan.reproductormusica.presentation.screens.FolderSongsScreen
+import com.juan.reproductormusica.presentation.screens.MainTabScreen
 import com.juan.reproductormusica.presentation.screens.NowPlayingScreen
-import com.juan.reproductormusica.presentation.screens.SongListScreen
 import com.juan.reproductormusica.presentation.viewmodel.MusicViewModel
 
 /**
  * Rutas de navegación de la aplicación
  */
 object MusicDestinations {
-    const val SONG_LIST = "song_list"
+    const val MAIN_TABS = "main_tabs"
     const val NOW_PLAYING = "now_playing"
+    const val FOLDER_SONGS = "folder_songs/{folderName}"
+    
+    fun createFolderSongsRoute(folderName: String) = "folder_songs/$folderName"
 }
 
 /**
@@ -33,50 +40,71 @@ fun MusicNavigation(
     navController: NavHostController = rememberNavController(),
     modifier: Modifier = Modifier
 ) {
+    // Obtener la ruta actual para determinar si mostrar el mini reproductor
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    
+    // Ocultar mini reproductor cuando estemos en la pantalla de reproducción
+    val shouldShowMiniPlayer = currentRoute != MusicDestinations.NOW_PLAYING
+    
     Box(modifier = modifier.fillMaxSize()) {
         // Navegación principal
         NavHost(
             navController = navController,
-            startDestination = MusicDestinations.SONG_LIST,
+            startDestination = MusicDestinations.MAIN_TABS,
             modifier = Modifier.fillMaxSize()
         ) {
-            // Pantalla principal con lista de canciones
-            composable(MusicDestinations.SONG_LIST) {
-                SongListScreen(
-                    canciones = songs,
+            // Pantalla principal con pestañas (Canciones y Carpetas)
+            composable(MusicDestinations.MAIN_TABS) {
+                MainTabScreen(
+                    songs = songs,
                     musicViewModel = musicViewModel,
-                    // Padding bottom para el mini-player
-                    modifier = Modifier.padding(bottom = 80.dp)
+                    navController = navController,
+                    modifier = if (shouldShowMiniPlayer) Modifier.padding(bottom = 80.dp) else Modifier
                 )
             }
             
-            // Pantalla "Now Playing" detallada
+            // Pantalla de reproducción (sin padding inferior porque no hay mini reproductor)
             composable(MusicDestinations.NOW_PLAYING) {
                 NowPlayingScreen(
                     musicViewModel = musicViewModel,
-                    onBackPressed = {
-                        navController.popBackStack()
-                    }
+                    onBackPressed = { navController.popBackStack() }
+                )
+            }
+            
+            // Pantalla de canciones por carpeta
+            composable(
+                route = MusicDestinations.FOLDER_SONGS,
+                arguments = listOf(navArgument("folderName") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val folderName = backStackEntry.arguments?.getString("folderName")!!
+                FolderSongsScreen(
+                    folderName = folderName,
+                    musicViewModel = musicViewModel,
+                    navController = navController,
+                    modifier = if (shouldShowMiniPlayer) Modifier.padding(bottom = 80.dp) else Modifier
                 )
             }
         }
         
-        // Mini-player persistente en la parte inferior
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .align(androidx.compose.ui.Alignment.BottomCenter)
-        ) {
-            MiniPlayer(
-                musicViewModel = musicViewModel,
-                onNavigateToNowPlaying = {
-                    navController.navigate(MusicDestinations.NOW_PLAYING) {
-                        // Evitar múltiples instancias de la misma pantalla
-                        launchSingleTop = true
+        // Mini-player persistente en la parte inferior (solo si no estamos en NowPlayingScreen)
+        if (shouldShowMiniPlayer) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .align(androidx.compose.ui.Alignment.BottomCenter)
+            ) {
+                MiniPlayer(
+                    musicViewModel = musicViewModel,
+                    onNavigateToNowPlaying = {
+                        navController.navigate(MusicDestinations.NOW_PLAYING) {
+                            // Evitar múltiples instancias de la misma pantalla
+                            launchSingleTop = true
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 }
@@ -90,11 +118,17 @@ fun NavHostController.navigateToNowPlaying() {
     }
 }
 
-fun NavHostController.navigateToSongList() {
-    navigate(MusicDestinations.SONG_LIST) {
-        popUpTo(MusicDestinations.SONG_LIST) {
+fun NavHostController.navigateToMainTabs() {
+    navigate(MusicDestinations.MAIN_TABS) {
+        popUpTo(MusicDestinations.MAIN_TABS) {
             inclusive = false
         }
+        launchSingleTop = true
+    }
+}
+
+fun NavHostController.navigateToFolderSongs(folderName: String) {
+    navigate(MusicDestinations.createFolderSongsRoute(folderName)) {
         launchSingleTop = true
     }
 }

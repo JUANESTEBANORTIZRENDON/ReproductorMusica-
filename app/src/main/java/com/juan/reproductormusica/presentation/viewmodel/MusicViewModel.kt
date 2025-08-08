@@ -13,10 +13,10 @@ import java.io.File
 
 /**
  * ViewModel que gestiona el estado de reproducción de música siguiendo el patrón MVVM.
- * 
+ *
  * Actúa como intermediario entre la UI (Compose) y la lógica de reproducción (MediaControllerManager),
  * proporcionando estados reactivos y manejando eventos del usuario de manera centralizada.
- * 
+ *
  * Características principales:
  * - Estados reactivos con StateFlow
  * - Delegación de comandos al MediaControllerManager
@@ -27,22 +27,27 @@ import java.io.File
 class MusicViewModel(
     private val mediaControllerManager: MediaControllerManager
 ) : ViewModel() {
-    
+
     // ========================================
     // ESTADOS DE BÚSQUEDA Y FILTRADO
     // ========================================
-    
+
     // Lista original de canciones (sin filtrar)
     private val _allSongs = MutableStateFlow<List<Song>>(emptyList())
-    
+    val allSongs: StateFlow<List<Song>> = _allSongs.asStateFlow()
+
+    // Playlist actual (fuente de verdad en el VM)
+    private val _currentPlaylist = MutableStateFlow<List<Song>>(emptyList())
+    val currentPlaylist: StateFlow<List<Song>> = _currentPlaylist.asStateFlow()
+
     // Término de búsqueda actual
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-    
+
     // Opción de ordenamiento actual
     private val _sortOption = MutableStateFlow(SortOption.DEFAULT)
     val sortOption: StateFlow<SortOption> = _sortOption.asStateFlow()
-    
+
     // Lista filtrada y ordenada (resultado final)
     val filteredSongs: StateFlow<List<Song>> = combine(
         _allSongs,
@@ -57,243 +62,212 @@ class MusicViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
-    
+
     // ========================================
     // ESTADOS REACTIVOS PARA LA UI
     // ========================================
-    
-    /**
-     * Canción actualmente en reproducción o seleccionada
-     */
+
+    /** Canción actualmente en reproducción o seleccionada */
     val currentSong: StateFlow<Song?> = mediaControllerManager.currentSong
-    
-    /**
-     * Estado de reproducción (true = reproduciendo, false = pausado)
-     */
+
+    /** Estado de reproducción (true = reproduciendo, false = pausado) */
     val isPlaying: StateFlow<Boolean> = mediaControllerManager.isPlaying
-    
-    /**
-     * Posición actual de reproducción en milisegundos
-     */
+
+    /** Posición actual de reproducción en milisegundos */
     val position: StateFlow<Long> = mediaControllerManager.currentPosition
-    
-    /**
-     * Duración total de la canción actual en milisegundos
-     */
+
+    /** Duración total de la canción actual en milisegundos */
     val duration: StateFlow<Long> = mediaControllerManager.duration
-    
-    /**
-     * Estado del reproductor (IDLE, BUFFERING, READY, ENDED)
-     */
+
+    /** Estado del reproductor (IDLE, BUFFERING, READY, ENDED) */
     val playbackState: StateFlow<Int> = mediaControllerManager.playbackState
-    
+
     // ========================================
     // EVENTOS DE USUARIO - BÚSQUEDA Y FILTRADO
     // ========================================
-    
-    /**
-     * Actualiza el término de búsqueda
-     * 
-     * @param query Nuevo término de búsqueda
-     */
-    fun updateSearchQuery(query: String) {
-        _searchQuery.value = query
-    }
-    
-    /**
-     * Actualiza la opción de ordenamiento
-     * 
-     * @param option Nueva opción de ordenamiento
-     */
+
+    /** Actualiza la opción de ordenamiento */
     fun updateSortOption(option: SortOption) {
         _sortOption.value = option
     }
-    
-    /**
-     * Limpia el término de búsqueda
-     */
+
+    /** Limpia el término de búsqueda */
     fun clearSearch() {
         _searchQuery.value = ""
     }
-    
+
     /**
      * Configura la lista completa de canciones (llamado desde MainActivity)
-     * 
-     * @param songs Lista completa de canciones
      */
     fun setAllSongs(songs: List<Song>) {
         _allSongs.value = songs
-        // También configurar la playlist en el MediaController
-        setPlaylist(songs)
+
+        // Si aún no hay playlist activa en el VM, usar todas las canciones
+        if (_currentPlaylist.value.isEmpty()) {
+            setPlaylist(songs)
+        }
     }
-    
+
+    /**
+     * Obtiene las canciones agrupadas por carpeta
+     */
+    fun getFolders(): Map<String, List<Song>> {
+        return _allSongs.value.groupBy { song ->
+            try {
+                File(song.data).parentFile?.name ?: "Desconocida"
+            } catch (_: Exception) {
+                "Desconocida"
+            }
+        }
+    }
+
+    /**
+     * Obtiene las canciones de una carpeta específica
+     */
+    fun getSongsByFolder(folderName: String): List<Song> {
+        return _allSongs.value.filter { song ->
+            try {
+                File(song.data).parentFile?.name == folderName
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
     // ========================================
     // EVENTOS DE USUARIO - CONTROLES DE REPRODUCCIÓN
     // ========================================
-    
-    /**
-     * Alterna entre reproducir y pausar la canción actual
-     */
+
+    /** Alterna entre reproducir y pausar la canción actual */
     fun togglePlayPause() {
-        viewModelScope.launch {
-            mediaControllerManager.togglePlayPause()
-        }
+        viewModelScope.launch { mediaControllerManager.togglePlayPause() }
     }
-    
-    /**
-     * Reproduce la canción actual (si está pausada)
-     */
+
+    /** Reproduce la canción actual (si está pausada) */
     fun play() {
-        viewModelScope.launch {
-            mediaControllerManager.play()
-        }
+        viewModelScope.launch { mediaControllerManager.play() }
     }
-    
-    /**
-     * Pausa la reproducción actual
-     */
+
+    /** Pausa la reproducción actual */
     fun pause() {
-        viewModelScope.launch {
-            mediaControllerManager.pause()
-        }
+        viewModelScope.launch { mediaControllerManager.pause() }
     }
-    
-    /**
-     * Avanza a la siguiente canción en la playlist
-     */
+
+    /** Avanza a la siguiente canción en la playlist */
     fun skipToNext() {
-        viewModelScope.launch {
-            mediaControllerManager.seekToNext()
-        }
+        viewModelScope.launch { mediaControllerManager.seekToNext() }
     }
-    
-    /**
-     * Retrocede a la canción anterior en la playlist
-     */
+
+    /** Retrocede a la canción anterior en la playlist */
     fun skipToPrevious() {
-        viewModelScope.launch {
-            mediaControllerManager.seekToPrevious()
-        }
+        viewModelScope.launch { mediaControllerManager.seekToPrevious() }
     }
-    
+
     /**
      * Busca a una posición específica en la canción actual
-     * 
-     * @param positionMs Posición en milisegundos donde buscar
      */
     fun seekTo(positionMs: Long) {
-        viewModelScope.launch {
-            mediaControllerManager.seekTo(positionMs)
-        }
+        viewModelScope.launch { mediaControllerManager.seekTo(positionMs) }
     }
-    
+
     // ========================================
     // EVENTOS DE USUARIO - GESTIÓN DE PLAYLIST
     // ========================================
-    
+
     /**
      * Configura una nueva playlist y opcionalmente inicia la reproducción
-     * 
-     * @param songs Lista de canciones para la playlist
-     * @param startIndex Índice de la canción inicial (por defecto 0)
      */
     fun setPlaylist(songs: List<Song>, startIndex: Int = 0) {
         viewModelScope.launch {
+            _currentPlaylist.value = songs  // mantener estado local
             mediaControllerManager.setPlaylist(songs, startIndex)
         }
     }
     
     /**
-     * Reproduce una canción específica de la playlist actual
-     * 
-     * @param songIndex Índice de la canción en la playlist
+     * Actualiza la playlist sin cambiar la canción actual
      */
-    fun playSongAtIndex(songIndex: Int) {
+    fun updatePlaylistWithoutChangingSong(songs: List<Song>) {
         viewModelScope.launch {
-            mediaControllerManager.seekToIndex(songIndex)
+            _currentPlaylist.value = songs  // mantener estado local
+            mediaControllerManager.updatePlaylistWithoutChangingSong(songs)
         }
     }
-    
+
     /**
-     * Reproduce una canción específica buscándola en la playlist
-     * Ahora busca en la lista original completa, no en la filtrada
-     * 
-     * @param song Canción a reproducir
+     * Reproduce una canción específica de la playlist actual por índice
+     */
+    fun playSongAtIndex(songIndex: Int) {
+        viewModelScope.launch { mediaControllerManager.seekToIndex(songIndex) }
+    }
+
+    /**
+     * Reproduce una canción específica buscándola en la lista completa
      */
     fun playSong(song: Song) {
         viewModelScope.launch {
-            val allSongsList = _allSongs.value
-            val index = allSongsList.indexOfFirst { it.id == song.id }
+            val list = _allSongs.value
+            val index = list.indexOfFirst { it.id == song.id }
             if (index != -1) {
                 mediaControllerManager.seekToIndex(index)
             }
         }
     }
-    
+
     // ========================================
     // MÉTODOS DE UTILIDAD
     // ========================================
-    
-    /**
-     * Obtiene el progreso de reproducción como porcentaje (0.0 - 1.0)
-     */
+
+    /** Progreso de reproducción (0.0 - 1.0) */
     fun getPlaybackProgress(): Float {
         val currentPos = position.value
         val totalDuration = duration.value
         return if (totalDuration > 0) {
             (currentPos.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
+        } else 0f
     }
-    
-    /**
-     * Verifica si hay una canción siguiente disponible
-     */
-    fun hasNext(): Boolean {
-        // Esta lógica podría expandirse para verificar el estado real de la playlist
-        return playbackState.value != Player.STATE_ENDED
-    }
-    
-    /**
-     * Verifica si hay una canción anterior disponible
-     */
-    fun hasPrevious(): Boolean {
-        // Esta lógica podría expandirse para verificar la posición en la playlist
-        return currentSong.value != null
-    }
-    
-    /**
-     * Formatea el tiempo en milisegundos a formato MM:SS
-     */
+
+    /** ¿Hay siguiente? */
+    fun hasNext(): Boolean = playbackState.value != Player.STATE_ENDED
+
+    /** ¿Hay anterior? */
+    fun hasPrevious(): Boolean = currentSong.value != null
+
+    /** Formatea milisegundos a MM:SS */
     fun formatTime(timeMs: Long): String {
         val totalSeconds = timeMs / 1000
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return String.format("%02d:%02d", minutes, seconds)
     }
-    
+
+    // ========================================
+    // EVENTOS DE USUARIO - BÚSQUEDA Y FILTRADO
+    // ========================================
+
+    /**
+     * Actualiza el término de búsqueda
+     */
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
     // ========================================
     // GESTIÓN DE RECURSOS
     // ========================================
-    
+
     override fun onCleared() {
         super.onCleared()
         // El MediaControllerManager se libera en MainActivity.onDestroy()
-        // No necesitamos hacer nada aquí ya que el ViewModel no posee el MediaController
     }
-    
+
     // ========================================
     // FACTORY PARA INYECCIÓN DE DEPENDENCIAS
     // ========================================
-    
-    /**
-     * Factory para crear instancias del MusicViewModel con dependencias
-     */
+
     class Factory(
         private val mediaControllerManager: MediaControllerManager
     ) : ViewModelProvider.Factory {
-        
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(MusicViewModel::class.java)) {
@@ -302,11 +276,23 @@ class MusicViewModel(
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }
     }
+
+    companion object {
+        /** Actualiza el término de búsqueda */
+        fun updateSearchQuery(musicViewModel: MusicViewModel, query: String) {
+            musicViewModel._searchQuery.value = query
+        }
+
+        /**
+         * Actualiza la opción de ordenamiento
+         */
+        fun SortOption.updateSortOption(musicViewModel: MusicViewModel) {
+            musicViewModel._sortOption.value = this
+        }
+    }
 }
 
-/**
- * Opciones de ordenamiento para la lista de canciones
- */
+/** Opciones de ordenamiento para la lista de canciones */
 enum class SortOption(val displayName: String) {
     TITLE_ASC("Título A-Z"),
     TITLE_DESC("Título Z-A"),
@@ -317,9 +303,7 @@ enum class SortOption(val displayName: String) {
     DEFAULT("Por Carpeta") // Ordenamiento original por carpeta
 }
 
-/**
- * Extensión para aplicar el ordenamiento a una lista de canciones
- */
+/** Aplica el ordenamiento seleccionado a una lista de canciones */
 fun List<Song>.applySorting(sortOption: SortOption): List<Song> {
     return when (sortOption) {
         SortOption.TITLE_ASC -> this.sortedBy { it.title.lowercase() }
@@ -332,9 +316,7 @@ fun List<Song>.applySorting(sortOption: SortOption): List<Song> {
     }
 }
 
-/**
- * Estados de reproducción para facilitar el manejo en la UI
- */
+/** Estados del reproductor (helper) */
 object PlaybackStates {
     const val STATE_IDLE = Player.STATE_IDLE
     const val STATE_BUFFERING = Player.STATE_BUFFERING
@@ -342,43 +324,26 @@ object PlaybackStates {
     const val STATE_ENDED = Player.STATE_ENDED
 }
 
-/**
- * Extensiones útiles para el ViewModel en Compose
- */
-
-/**
- * Verifica si el reproductor está en estado de carga
- */
+/** Helpers de estado útiles en Compose */
 val MusicViewModel.isBuffering: Boolean
     get() = playbackState.value == Player.STATE_BUFFERING
 
-/**
- * Verifica si el reproductor está listo para reproducir
- */
 val MusicViewModel.isReady: Boolean
     get() = playbackState.value == Player.STATE_READY
 
-/**
- * Verifica si la reproducción ha terminado
- */
 val MusicViewModel.isEnded: Boolean
     get() = playbackState.value == Player.STATE_ENDED
 
 /**
- * Extensión para aplicar búsqueda a una lista de canciones
- * Busca en título, artista y nombre de carpeta
+ * Aplica búsqueda por título, “artista” (carpeta) y nombre de carpeta real.
  */
 private fun List<Song>.applySearch(query: String): List<Song> {
     if (query.isBlank()) return this
-    
     val searchTerm = query.lowercase().trim()
     return filter { song ->
         song.title.lowercase().contains(searchTerm) ||
-        song.artist.lowercase().contains(searchTerm) ||
-        try {
-            File(song.data).parentFile?.name?.lowercase()?.contains(searchTerm) == true
-        } catch (e: Exception) {
-            false
-        }
+                song.artist.lowercase().contains(searchTerm) ||
+                runCatching { File(song.data).parentFile?.name?.lowercase()?.contains(searchTerm) == true }
+                    .getOrDefault(false)
     }
 }
